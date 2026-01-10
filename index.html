@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Warehouse Robot Q-Learning</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 900px;
+      width: 100%;
+    }
+    
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+    
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .main-content {
+      display: flex;
+      gap: 40px;
+      align-items: flex-start;
+    }
+    
+    .grid-container {
+      flex-shrink: 0;
+    }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(6, 70px);
+      gap: 4px;
+      background: #e0e0e0;
+      padding: 4px;
+      border-radius: 10px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    .cell {
+      width: 70px;
+      height: 70px;
+      background: white;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .cell.robot {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+      animation: pulse 1s infinite;
+    }
+    
+    .cell.target {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      box-shadow: 0 0 20px rgba(245, 87, 108, 0.5);
+    }
+    
+    .cell.obstacle {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+    
+    .cell.path {
+      background: rgba(102, 126, 234, 0.1);
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    
+    .stats-panel {
+      flex: 1;
+      min-width: 250px;
+    }
+    
+    .stat-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .stat-value {
+      font-size: 28px;
+      font-weight: bold;
+    }
+    
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    
+    button {
+      padding: 15px 30px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    }
+    
+    .btn-secondary {
+      background: white;
+      color: #667eea;
+      border: 2px solid #667eea;
+    }
+    
+    .btn-secondary:hover {
+      background: #667eea;
+      color: white;
+    }
+    
+    .btn-danger {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+    }
+    
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+    
+    .legend {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #666;
+    }
+    
+    .legend-icon {
+      font-size: 24px;
+    }
+    
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      background: white;
+      transition: width 0.3s ease;
+      border-radius: 4px;
+    }
+    
+    .status-message {
+      text-align: center;
+      padding: 15px;
+      background: rgba(102, 126, 234, 0.1);
+      border-radius: 8px;
+      margin-top: 20px;
+      color: #667eea;
+      font-weight: 600;
+    }
+    
+    @media (max-width: 768px) {
+      .main-content {
+        flex-direction: column;
+      }
+      
+      .grid {
+        grid-template-columns: repeat(6, 50px);
+      }
+      
+      .cell {
+        width: 50px;
+        height: 50px;
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 Autonomous Warehouse Robot</h1>
+    <p class="subtitle">Q-Learning Reinforcement Learning Demo</p>
+    
+    <div class="main-content">
+      <div class="grid-container">
+        <div class="grid" id="grid"></div>
+        <div class="legend">
+          <div class="legend-item">
+            <span class="legend-icon">🤖</span>
+            <span>Robot</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-icon">🎯</span>
+            <span>Target</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-icon">📦</span>
+            <span>Obstacles</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="stats-panel">
+        <div class="stat-card">
+          <div class="stat-label">Episode</div>
+          <div class="stat-value" id="episode">0</div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-label">Steps Taken</div>
+          <div class="stat-value" id="steps">0</div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-label">Success Rate</div>
+          <div class="stat-value" id="success">0%</div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="successBar" style="width: 0%"></div>
+          </div>
+        </div>
+        
+        <div class="stat-card">
+          <div class="stat-label">Exploration Rate (ε)</div>
+          <div class="stat-value" id="epsilon">100%</div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="epsilonBar" style="width: 100%"></div>
+          </div>
+        </div>
+        
+        <div class="controls">
+          <button class="btn-primary" id="trainBtn" onclick="toggleTraining()">Start Training</button>
+          <button class="btn-secondary" onclick="reset()">Reset Robot</button>
+          <button class="btn-danger" onclick="fullReset()">Reset Everything</button>
+        </div>
+        
+        <div class="status-message" id="status">Press Start Training to begin</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const size = 6;
+    const grid = document.getElementById("grid");
+    let Q = Array(size).fill().map(() =>
+      Array(size).fill().map(() => Array(4).fill(0))
+    );
+    let robot = { x: 0, y: 0 };
+    let target = { x: 5, y: 5 };
+    let obstacles = [
+      { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 },
+      { x: 3, y: 3 }, { x: 2, y: 4 }
+    ];
+    let alpha = 0.1;
+    let gamma = 0.95;
+    let epsilon = 1.0;
+    let episode = 0;
+    let steps = 0;
+    let successCount = 0;
+    let totalEpisodes = 0;
+    let isTraining = false;
+    let trainingInterval = null;
+    let bestPath = [];
+    
+    const actions = [
+      [-1, 0], [1, 0], [0, -1], [0, 1]
+    ];
+    
+    function draw() {
+      grid.innerHTML = "";
+      for (let i = 0; i < size; i++) {
+        for (let j = 0; j < size; j++) {
+          let cell = document.createElement("div");
+          cell.className = "cell";
+          
+          if (bestPath.some(p => p.x === i && p.y === j)) {
+            cell.classList.add("path");
+          }
+          
+          if (i === robot.x && j === robot.y) {
+            cell.textContent = "🤖";
+            cell.classList.add("robot");
+          } else if (i === target.x && j === target.y) {
+            cell.textContent = "🎯";
+            cell.classList.add("target");
+          } else if (obstacles.some(obs => obs.x === i && obs.y === j)) {
+            cell.textContent = "📦";
+            cell.classList.add("obstacle");
+          }
+          
+          grid.appendChild(cell);
+        }
+      }
+    }
+    
+    function step() {
+      let action;
+      if (Math.random() < epsilon) {
+        action = Math.floor(Math.random() * 4);
+      } else {
+        action = Q[robot.x][robot.y].indexOf(Math.max(...Q[robot.x][robot.y]));
+      }
+      
+      let nx = robot.x + actions[action][0];
+      let ny = robot.y + actions[action][1];
+      let reward = -1;
+      
+      if (nx < 0 || ny < 0 || nx >= size || ny >= size) {
+        reward = -10;
+        nx = robot.x;
+        ny = robot.y;
+      } else if (obstacles.some(obs => obs.x === nx && obs.y === ny)) {
+        reward = -15;
+        nx = robot.x;
+        ny = robot.y;
+      } else if (nx === target.x && ny === target.y) {
+        reward = 100;
+      }
+      
+      Q[robot.x][robot.y][action] += alpha * (
+        reward + gamma * Math.max(...Q[nx][ny]) - Q[robot.x][robot.y][action]
+      );
+      
+      robot.x = nx;
+      robot.y = ny;
+      steps++;
+      
+      updateStats();
+      
+      if (robot.x === target.x && robot.y === target.y) {
+        successCount++;
+        episode++;
+        totalEpisodes++;
+        robot = { x: 0, y: 0 };
+        steps = 0;
+        
+        if (epsilon < 0.1) {
+          calculateBestPath();
+        }
+        
+        document.getElementById("status").textContent = 
+          `✅ Target reached! Episode ${episode} complete`;
+      }
+    }
+    
+    function calculateBestPath() {
+      bestPath = [];
+      let current = { x: 0, y: 0 };
+      let visited = new Set();
+      let maxSteps = size * size;
+      
+      while (!(current.x === target.x && current.y === target.y) && maxSteps > 0) {
+        bestPath.push({ ...current });
+        let key = `${current.x},${current.y}`;
+        
+        if (visited.has(key)) break;
+        visited.add(key);
+        
+        let action = Q[current.x][current.y].indexOf(
+          Math.max(...Q[current.x][current.y])
+        );
+        
+        let nx = current.x + actions[action][0];
+        let ny = current.y + actions[action][1];
+        
+        if (nx >= 0 && ny >= 0 && nx < size && ny < size &&
+            !obstacles.some(obs => obs.x === nx && obs.y === ny)) {
+          current = { x: nx, y: ny };
+        } else {
+          break;
+        }
+        
+        maxSteps--;
+      }
+    }
+    
+    function updateStats() {
+      document.getElementById("episode").textContent = episode;
+      document.getElementById("steps").textContent = steps;
+      
+      let successRate = totalEpisodes > 0 ? 
+        Math.round((successCount / totalEpisodes) * 100) : 0;
+      document.getElementById("success").textContent = successRate + "%";
+      document.getElementById("successBar").style.width = successRate + "%";
+      
+      let epsilonPercent = Math.round(epsilon * 100);
+      document.getElementById("epsilon").textContent = epsilonPercent + "%";
+      document.getElementById("epsilonBar").style.width = epsilonPercent + "%";
+    }
+    
+    function toggleTraining() {
+      isTraining = !isTraining;
+      const btn = document.getElementById("trainBtn");
+      
+      if (isTraining) {
+        btn.textContent = "Pause Training";
+        btn.classList.remove("btn-primary");
+        btn.classList.add("btn-danger");
+        document.getElementById("status").textContent = "🚀 Training in progress...";
+        
+        trainingInterval = setInterval(() => {
+          step();
+          draw();
+          epsilon = Math.max(epsilon * 0.9995, 0.01);
+          
+          if (steps > 200) {
+            episode++;
+            totalEpisodes++;
+            robot = { x: 0, y: 0 };
+            steps = 0;
+            document.getElementById("status").textContent = 
+              "⚠️ Episode timeout - reset";
+          }
+        }, 100);
+      } else {
+        btn.textContent = "Resume Training";
+        btn.classList.remove("btn-danger");
+        btn.classList.add("btn-primary");
+        document.getElementById("status").textContent = "⏸️ Training paused";
+        clearInterval(trainingInterval);
+      }
+    }
+    
+    function reset() {
+      robot = { x: 0, y: 0 };
+      steps = 0;
+      document.getElementById("status").textContent = "Robot reset to start position";
+      draw();
+    }
+    
+    function fullReset() {
+      if (isTraining) {
+        toggleTraining();
+      }
+      
+      Q = Array(size).fill().map(() =>
+        Array(size).fill().map(() => Array(4).fill(0))
+      );
+      robot = { x: 0, y: 0 };
+      epsilon = 1.0;
+      episode = 0;
+      steps = 0;
+      successCount = 0;
+      totalEpisodes = 0;
+      bestPath = [];
+      
+      updateStats();
+      document.getElementById("status").textContent = 
+        "🔄 Everything reset - ready to start fresh";
+      draw();
+    }
+    
+    draw();
+    updateStats();
+  </script>
+</body>
+</html>
