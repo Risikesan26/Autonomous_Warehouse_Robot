@@ -76,6 +76,7 @@
       transition: all 0.3s ease;
       position: relative;
       overflow: hidden;
+      cursor: pointer;
     }
     
     .cell.robot {
@@ -100,6 +101,58 @@
     @keyframes pulse {
       0%, 100% { transform: scale(1); }
       50% { transform: scale(1.05); }
+    }
+    
+    .tooltip {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 12px 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 1000;
+      min-width: 200px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    
+    .tooltip.show {
+      opacity: 1;
+    }
+    
+    .tooltip-title {
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #667eea;
+      font-size: 13px;
+    }
+    
+    .tooltip-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 4px 0;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .tooltip-row:last-child {
+      border-bottom: none;
+    }
+    
+    .tooltip-label {
+      color: #aaa;
+    }
+    
+    .tooltip-value {
+      font-weight: bold;
+      color: #fff;
+    }
+    
+    .tooltip-best {
+      color: #4ade80;
+      font-weight: bold;
     }
     
     .stats-panel {
@@ -232,6 +285,43 @@
       font-weight: 600;
     }
     
+    .speed-slider {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.3);
+      outline: none;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    
+    .speed-slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    
+    .speed-slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    
+    .speed-display {
+      text-align: center;
+      margin-top: 8px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    
     @media (max-width: 768px) {
       .main-content {
         flex-direction: column;
@@ -252,7 +342,7 @@
 <body>
   <div class="container">
     <h1>🤖 Autonomous Warehouse Robot</h1>
-    <p class="subtitle">Q-Learning Reinforcement Learning Demo</p>
+    <p class="subtitle">Q-Learning Reinforcement Learning Demo - Hover over cells to see Q-values</p>
     
     <div class="main-content">
       <div class="grid-container">
@@ -300,6 +390,13 @@
           </div>
         </div>
         
+        <div class="stat-card">
+          <div class="stat-label">Training Speed</div>
+          <input type="range" id="speedSlider" min="1" max="10" value="5" 
+                 oninput="updateSpeed(this.value)" class="speed-slider">
+          <div class="speed-display" id="speedDisplay">5x</div>
+        </div>
+        
         <div class="controls">
           <button class="btn-primary" id="trainBtn" onclick="toggleTraining()">Start Training</button>
           <button class="btn-secondary" onclick="reset()">Reset Robot</button>
@@ -310,10 +407,13 @@
       </div>
     </div>
   </div>
+  
+  <div class="tooltip" id="tooltip"></div>
 
   <script>
     const size = 6;
     const grid = document.getElementById("grid");
+    const tooltip = document.getElementById("tooltip");
     let Q = Array(size).fill().map(() =>
       Array(size).fill().map(() => Array(4).fill(0))
     );
@@ -333,10 +433,66 @@
     let isTraining = false;
     let trainingInterval = null;
     let bestPath = [];
+    let trainingSpeed = 5;
+    let lastAction = null;
+    let lastDecisionType = "random";
     
     const actions = [
       [-1, 0], [1, 0], [0, -1], [0, 1]
     ];
+    
+    const actionNames = ["Up ⬆️", "Down ⬇️", "Left ⬅️", "Right ➡️"];
+    
+    function showTooltip(e, x, y) {
+      const qValues = Q[x][y];
+      const maxQ = Math.max(...qValues);
+      const bestAction = qValues.indexOf(maxQ);
+      
+      let tooltipHTML = `<div class="tooltip-title">Cell (${x}, ${y}) - Q-Values</div>`;
+      
+      qValues.forEach((value, idx) => {
+        const isBest = idx === bestAction && maxQ !== 0;
+        const valueClass = isBest ? 'tooltip-best' : 'tooltip-value';
+        tooltipHTML += `
+          <div class="tooltip-row">
+            <span class="tooltip-label">${actionNames[idx]}:</span>
+            <span class="${valueClass}">${value.toFixed(2)}${isBest ? ' ⭐' : ''}</span>
+          </div>
+        `;
+      });
+      
+      if (x === robot.x && y === robot.y && lastAction !== null) {
+        tooltipHTML += `
+          <div class="tooltip-row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2);">
+            <span class="tooltip-label">Last Action:</span>
+            <span class="tooltip-value">${actionNames[lastAction]}</span>
+          </div>
+          <div class="tooltip-row">
+            <span class="tooltip-label">Decision:</span>
+            <span class="tooltip-value">${lastDecisionType === 'random' ? 'Exploring 🎲' : 'Exploiting 🎯'}</span>
+          </div>
+        `;
+      }
+      
+      if (maxQ === 0 && qValues.every(v => v === 0)) {
+        if (x === target.x && y === target.y) {
+          tooltipHTML += `<div style="margin-top: 8px; color: #4ade80; font-size: 11px;">🎯 Target - No actions needed!</div>`;
+        } else {
+          tooltipHTML += `<div style="margin-top: 8px; color: #fbbf24; font-size: 11px;">⚠️ Not yet explored</div>`;
+        }
+      }
+      
+      tooltip.innerHTML = tooltipHTML;
+      
+      const rect = e.target.getBoundingClientRect();
+      tooltip.style.left = rect.right + 10 + 'px';
+      tooltip.style.top = rect.top + 'px';
+      tooltip.classList.add('show');
+    }
+    
+    function hideTooltip() {
+      tooltip.classList.remove('show');
+    }
     
     function draw() {
       grid.innerHTML = "";
@@ -344,6 +500,11 @@
         for (let j = 0; j < size; j++) {
           let cell = document.createElement("div");
           cell.className = "cell";
+          cell.dataset.x = i;
+          cell.dataset.y = j;
+          
+          cell.addEventListener('mouseenter', (e) => showTooltip(e, i, j));
+          cell.addEventListener('mouseleave', hideTooltip);
           
           if (bestPath.some(p => p.x === i && p.y === j)) {
             cell.classList.add("path");
@@ -369,9 +530,13 @@
       let action;
       if (Math.random() < epsilon) {
         action = Math.floor(Math.random() * 4);
+        lastDecisionType = "random";
       } else {
         action = Q[robot.x][robot.y].indexOf(Math.max(...Q[robot.x][robot.y]));
+        lastDecisionType = "exploit";
       }
+      
+      lastAction = action;
       
       let nx = robot.x + actions[action][0];
       let ny = robot.y + actions[action][1];
@@ -403,8 +568,6 @@
         successCount++;
         episode++;
         totalEpisodes++;
-        robot = { x: 0, y: 0 };
-        steps = 0;
         
         if (epsilon < 0.1) {
           calculateBestPath();
@@ -412,6 +575,14 @@
         
         document.getElementById("status").textContent = 
           `✅ Target reached! Episode ${episode} complete`;
+        
+        // Small delay before reset so target cell Q-values are visible
+        setTimeout(() => {
+          robot = { x: 0, y: 0 };
+          steps = 0;
+          lastAction = null;
+          draw();
+        }, 50);
       }
     }
     
@@ -460,6 +631,37 @@
       document.getElementById("epsilonBar").style.width = epsilonPercent + "%";
     }
     
+    function updateSpeed(value) {
+      trainingSpeed = value;
+      document.getElementById("speedDisplay").textContent = value + "x";
+      
+      if (isTraining) {
+        clearInterval(trainingInterval);
+        startTrainingInterval();
+      }
+    }
+    
+    function startTrainingInterval() {
+      const baseSpeed = 100;
+      const interval = baseSpeed / trainingSpeed;
+      
+      trainingInterval = setInterval(() => {
+        step();
+        draw();
+        epsilon = Math.max(epsilon * 0.9995, 0.01);
+        
+        if (steps > 200) {
+          episode++;
+          totalEpisodes++;
+          robot = { x: 0, y: 0 };
+          steps = 0;
+          lastAction = null;
+          document.getElementById("status").textContent = 
+            "⚠️ Episode timeout - reset";
+        }
+      }, interval);
+    }
+    
     function toggleTraining() {
       isTraining = !isTraining;
       const btn = document.getElementById("trainBtn");
@@ -470,20 +672,7 @@
         btn.classList.add("btn-danger");
         document.getElementById("status").textContent = "🚀 Training in progress...";
         
-        trainingInterval = setInterval(() => {
-          step();
-          draw();
-          epsilon = Math.max(epsilon * 0.9995, 0.01);
-          
-          if (steps > 200) {
-            episode++;
-            totalEpisodes++;
-            robot = { x: 0, y: 0 };
-            steps = 0;
-            document.getElementById("status").textContent = 
-              "⚠️ Episode timeout - reset";
-          }
-        }, 100);
+        startTrainingInterval();
       } else {
         btn.textContent = "Resume Training";
         btn.classList.remove("btn-danger");
@@ -496,6 +685,7 @@
     function reset() {
       robot = { x: 0, y: 0 };
       steps = 0;
+      lastAction = null;
       document.getElementById("status").textContent = "Robot reset to start position";
       draw();
     }
@@ -515,6 +705,8 @@
       successCount = 0;
       totalEpisodes = 0;
       bestPath = [];
+      lastAction = null;
+      lastDecisionType = "random";
       
       updateStats();
       document.getElementById("status").textContent = 
