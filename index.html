@@ -322,6 +322,48 @@
       font-weight: bold;
     }
     
+    .mode-selector {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    
+    .mode-btn {
+      padding: 10px 20px;
+      border: 2px solid #667eea;
+      background: white;
+      color: #667eea;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    
+    .mode-btn:hover {
+      background: rgba(102, 126, 234, 0.1);
+      transform: translateY(-2px);
+    }
+    
+    .mode-btn.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-color: #667eea;
+    }
+    
+    .cell.clickable {
+      cursor: pointer;
+    }
+    
+    .cell.clickable:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 15px rgba(102, 126, 234, 0.5);
+    }
+    
     @media (max-width: 768px) {
       .main-content {
         flex-direction: column;
@@ -343,6 +385,13 @@
   <div class="container">
     <h1>🤖 Autonomous Warehouse Robot</h1>
     <p class="subtitle">Q-Learning Reinforcement Learning Demo - Hover over cells to see Q-values</p>
+    
+    <div class="mode-selector">
+      <button class="mode-btn active" onclick="setMode('view')" id="viewMode">👁️ View Mode</button>
+      <button class="mode-btn" onclick="setMode('obstacle')" id="obstacleMode">📦 Add Obstacles</button>
+      <button class="mode-btn" onclick="setMode('target')" id="targetMode">🎯 Move Target</button>
+      <button class="mode-btn" onclick="setMode('robot')" id="robotMode">🤖 Place Robot</button>
+    </div>
     
     <div class="main-content">
       <div class="grid-container">
@@ -423,6 +472,16 @@
       { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 },
       { x: 3, y: 3 }, { x: 2, y: 4 }
     ];
+    
+    // Store original configuration
+    const originalConfig = {
+      robot: { x: 0, y: 0 },
+      target: { x: 5, y: 5 },
+      obstacles: [
+        { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 },
+        { x: 3, y: 3 }, { x: 2, y: 4 }
+      ]
+    };
     let alpha = 0.1;
     let gamma = 0.95;
     let epsilon = 1.0;
@@ -436,6 +495,7 @@
     let trainingSpeed = 5;
     let lastAction = null;
     let lastDecisionType = "random";
+    let currentMode = "view"; // view, obstacle, target, robot
     
     const actions = [
       [-1, 0], [1, 0], [0, -1], [0, 1]
@@ -503,8 +563,19 @@
           cell.dataset.x = i;
           cell.dataset.y = j;
           
-          cell.addEventListener('mouseenter', (e) => showTooltip(e, i, j));
-          cell.addEventListener('mouseleave', hideTooltip);
+          // Add interactive mode styling
+          if (currentMode !== 'view') {
+            cell.classList.add('clickable');
+          }
+          
+          // Hover tooltip (only in view mode)
+          if (currentMode === 'view') {
+            cell.addEventListener('mouseenter', (e) => showTooltip(e, i, j));
+            cell.addEventListener('mouseleave', hideTooltip);
+          }
+          
+          // Click handlers
+          cell.addEventListener('click', () => handleCellInteraction(i, j));
           
           if (bestPath.some(p => p.x === i && p.y === j)) {
             cell.classList.add("path");
@@ -523,6 +594,78 @@
           
           grid.appendChild(cell);
         }
+      }
+    }
+    
+    function setMode(mode) {
+      currentMode = mode;
+      
+      // Update button styles
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      document.getElementById(mode + 'Mode').classList.add('active');
+      
+      // Update status message
+      const messages = {
+        view: '👁️ View Mode - Hover over cells to see Q-values',
+        obstacle: '📦 Obstacle Mode - Click cells to add/remove obstacles',
+        target: '🎯 Target Mode - Click to move the target',
+        robot: '🤖 Robot Mode - Click to place the robot'
+      };
+      
+      document.getElementById("status").textContent = messages[mode];
+      
+      // Hide tooltip when switching modes
+      hideTooltip();
+      
+      // Redraw to update cell styles
+      draw();
+    }
+    
+    function handleCellInteraction(x, y) {
+      if (currentMode === 'view') return;
+      
+      if (currentMode === 'obstacle') {
+        // Can't place obstacle on robot or target
+        if ((x === robot.x && y === robot.y) || (x === target.x && y === target.y)) {
+          return;
+        }
+        
+        const existingIndex = obstacles.findIndex(obs => obs.x === x && obs.y === y);
+        
+        if (existingIndex !== -1) {
+          // Remove obstacle
+          obstacles.splice(existingIndex, 1);
+          document.getElementById("status").textContent = '📦 Obstacle removed! Click another cell to add more.';
+        } else {
+          // Add obstacle
+          obstacles.push({ x, y });
+          document.getElementById("status").textContent = '📦 Obstacle added! Click another cell or remove by clicking existing ones.';
+        }
+        
+        draw();
+      } else if (currentMode === 'target') {
+        // Can't place target on robot or obstacle
+        if ((x === robot.x && y === robot.y) || obstacles.some(obs => obs.x === x && obs.y === y)) {
+          return;
+        }
+        
+        target = { x, y };
+        document.getElementById("status").textContent = '🎯 Target moved! The robot will learn a new path.';
+        bestPath = []; // Clear old path
+        draw();
+      } else if (currentMode === 'robot') {
+        // Can't place robot on target or obstacle
+        if ((x === target.x && y === target.y) || obstacles.some(obs => obs.x === x && obs.y === y)) {
+          return;
+        }
+        
+        robot = { x, y };
+        steps = 0;
+        lastAction = null;
+        document.getElementById("status").textContent = '🤖 Robot placed! Start training to see it learn from this position.';
+        draw();
       }
     }
     
@@ -698,7 +841,12 @@
       Q = Array(size).fill().map(() =>
         Array(size).fill().map(() => Array(4).fill(0))
       );
-      robot = { x: 0, y: 0 };
+      
+      // Reset to original configuration
+      robot = { ...originalConfig.robot };
+      target = { ...originalConfig.target };
+      obstacles = originalConfig.obstacles.map(obs => ({ ...obs }));
+      
       epsilon = 1.0;
       episode = 0;
       steps = 0;
@@ -707,6 +855,13 @@
       bestPath = [];
       lastAction = null;
       lastDecisionType = "random";
+      
+      // Reset to view mode
+      currentMode = "view";
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      document.getElementById('viewMode').classList.add('active');
       
       updateStats();
       document.getElementById("status").textContent = 
